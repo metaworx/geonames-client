@@ -46,6 +46,62 @@ final class ClientTest extends TestCase
         $this->assertContains('wikipediaSearch', $endpoints);
     }
 
+    public function testGetLastTotalResultsCountWhenResultIsLarge()
+    {
+        // search for a large result
+        $arr = $this->client->search([
+            'q'    => '東京都',
+            'lang' => 'en',
+        ]);
+
+        $this->assertIsArray($arr);
+        $this->assertNotEmpty($arr);
+
+        $count = count($arr);
+
+        $total = $this->client->getLastTotalResultsCount();
+
+        $this->assertIsInt($total);
+        $this->assertGreaterThan(100, $total);
+        $this->assertGreaterThan($count, $total);
+    }
+
+    public function testGetLastTotalResultsCountWhenResultIsMedium()
+    {
+        // search for a couple results
+        $arr = $this->client->search([
+            'name_equals'  => 'Grüningen (Stedtli)',
+            'country'      => 'CH',
+            'featureClass' => 'P',
+        ]);
+
+        $this->assertIsArray($arr);
+        $this->assertNotEmpty($arr);
+
+        $count = count($arr);
+
+        $total = $this->client->getLastTotalResultsCount();
+
+        $this->assertIsInt($total);
+        $this->assertEquals($count, $total);
+    }
+
+    public function testGetLastTotalResultsCountWhenPlaceDoesntExist()
+    {
+        // search for a non-existing place
+        $arr = $this->client->search([
+            'name_equals' => 'öalkdjfpaoirhpauhrpgjanfdlijgbiopesrzgpi',
+        ]);
+
+        $this->assertIsArray($arr);
+        $this->assertEmpty($arr);
+
+        $total = $this->client->getLastTotalResultsCount();
+
+        $this->assertIsInt($total);
+        $this->assertEquals(0, $total);
+    }
+
     public function testEndpointError()
     {
         $this->expectException(\Exception::class);
@@ -53,6 +109,59 @@ final class ClientTest extends TestCase
         $this->client->astergdem([]);
     }
 
+
+    public function testParamsToQueryString()
+    {
+        $g = $this->client;
+
+        $class = new \ReflectionClass($g);
+        $method = $class->getMethod('paramsToQueryString');
+        $method->setAccessible(true);
+
+        $paramsToQueryString = static function (array $params = []) use ($method, $g) {
+            return $method->invokeArgs($g, [$params]);
+        };
+
+        $params = [];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('', $qs);
+
+        $params = ['q' => 'foo'];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('q=foo', $qs);
+
+        $params = ['q' => ['foo', 'bar']];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('q=foo&q=bar', $qs);
+
+        $params = ['name_equals' => 'Grüningen', 'country' => 'CH'];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('name_equals=Gr%C3%BCningen&country=CH', $qs);
+
+        $params = ['name_equals' => 'Grüningen', 'country' => ['CH']];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('name_equals=Gr%C3%BCningen&country=CH', $qs);
+
+        $arr = $g->search($params);
+        $this->assertIsArray($arr);
+        $this->assertArrayHasKey(0, $arr);
+
+        $params = ['name_equals' => 'Grüningen', 'country' => ['CH', 'DE']];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('name_equals=Gr%C3%BCningen&country=CH&country=DE', $qs);
+
+        $arr = $g->search($params);
+        $this->assertIsArray($arr);
+        $this->assertArrayHasKey(0, $arr);
+
+        $params = ['name_equals' => 'Grüningen', 'country' => []];
+        $qs = $paramsToQueryString($params);
+        $this->assertEquals('name_equals=Gr%C3%BCningen', $qs);
+
+        $arr = $g->search($params);
+        $this->assertIsArray($arr);
+        $this->assertArrayHasKey(0, $arr);
+    }
 
     public function testAstergram()
     {

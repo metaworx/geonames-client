@@ -163,6 +163,11 @@ class Client
     ];
 
     /**
+     * @var int|null
+     */
+    protected $lastTotalResultsCount = null;
+
+    /**
      * Constructor.
      *
      * Creates a new GeoNames API Client instance.
@@ -193,6 +198,8 @@ class Client
      */
     public function __call(string $endpoint, array $params = [])
     {
+        $this->lastTotalResultsCount = null;
+
         // check that the endpoint is supported
         if (!in_array($endpoint, $this->getSupportedEndpoints())) {
             throw new \Exception(
@@ -266,14 +273,41 @@ class Client
             );
         }
 
+        if (property_exists($response_object, 'totalResultsCount')) {
+            $this->lastTotalResultsCount = $response_object->totalResultsCount;
+        }
+
         // return the value of the root property from the response object (if the endpoint supports it)
         $root_property = $this->endpoints[$endpoint];
-        if ($root_property !== false && property_exists($response_object, $root_property)
-        ) {
-            return $response_object->{$root_property};
+        if ($root_property !== false && property_exists($response_object, $root_property)) {
+            $response_object = $response_object->{$root_property};
+        }
+
+        if ($this->lastTotalResultsCount === null && is_array($response_object)) {
+            $this->lastTotalResultsCount = count($response_object);
         }
 
         return $response_object;
+    }
+
+    /**
+     * Returns an array of supported endpoints.
+     *
+     * @return array An array of endpoints supported.
+     * @see $endpoints
+     *
+     */
+    public function getSupportedEndpoints()
+    {
+        return array_keys($this->endpoints);
+    }
+
+    /**
+     * @return int|null
+     */
+    public function getLastTotalResultsCount()
+    {
+        return $this->lastTotalResultsCount;
     }
 
     /**
@@ -296,31 +330,22 @@ class Client
                 continue;
             }
             if (is_array($value)) {
-                // recursion case
-
-                $result_string = $this->paramsToQueryString($value);
-                if (!empty($result_string)) {
-                    $query_string[] = $result_string;
+                if (empty($value)) {
+                    // skip empty arrays
+                    continue;
+                }
+                foreach ($value as $key => $item) {
+                    if (!is_string($key)) {
+                        $key = $name;
+                    }
+                    $item = (string)$item;
+                    $query_string[] = $key . '=' . rawurlencode($item);
                 }
             } else {
-                // base case
-
                 $value = (string)$value;
                 $query_string[] = $name . '=' . rawurlencode($value);
             }
         }
         return implode('&', $query_string);
-    }
-
-    /**
-     * Returns an array of supported endpoints.
-     *
-     * @return array An array of endpoints supported.
-     * @see $endpoints
-     *
-     */
-    public function getSupportedEndpoints()
-    {
-        return array_keys($this->endpoints);
     }
 }
